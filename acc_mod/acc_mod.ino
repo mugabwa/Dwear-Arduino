@@ -15,6 +15,7 @@ float AX, AY, AZ, GX, GY, GZ;
 #define OUTPUT_READABLE_ACCELGYRO
 #define SEND_TO_NODE
 bool stop_flag;
+bool start_flag;
 
 void setup() {
     #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
@@ -23,6 +24,7 @@ void setup() {
         Fastwire::setup(400, true);
     #endif
     stop_flag = false;
+    start_flag = false;
     // initialize serial communication
     Serial.begin(9600);
     UnoConn.begin(19200);
@@ -77,6 +79,8 @@ void setup() {
 
 void loop() {
     // read raw accel/gyro measurements from device
+    updateSerial();
+    if (start_flag){
     accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
     AX = (float)ax/16384.0;
     AY = (float)ay/16384.0;
@@ -84,11 +88,10 @@ void loop() {
     GX = (float)gx/131.0;
     GY = (float)gy/131.0;
     GZ = (float)gz/131.0;    // these methods (and a few others) are also available
-    //accelgyro.getAcceleration(&ax, &ay, &az);
-    //accelgyro.getRotation(&gx, &gy, &gz);
+    }
       
     #ifdef OUTPUT_READABLE_ACCELGYRO
-    if (!stop_flag){
+    if (!stop_flag && start_flag){
         // display tab-separated accel/gyro x/y/z values
         Serial.print("a/g:\t");
         Serial.print(AX); Serial.print("\t");
@@ -103,18 +106,18 @@ void loop() {
 
     #ifdef SEND_TO_NODE
     // Send data to node_mcu
-    if (!stop_flag)
+    if (!stop_flag && start_flag)
     {
       UnoConn.print(AX);
-      UnoConn.print(" #");
+      UnoConn.print(", #");
       UnoConn.print(AY);
-      UnoConn.print(" #");
+      UnoConn.print(", #");
       UnoConn.print(AZ);
-      UnoConn.print(" #");
+      UnoConn.print(", #");
       UnoConn.print(GX);
-      UnoConn.print(" #");
+      UnoConn.print(", #");
       UnoConn.print(GY);
-      UnoConn.print(" #");
+      UnoConn.print(", #");
       UnoConn.print(GZ);
       UnoConn.print("#");
       UnoConn.print("\n#");
@@ -122,14 +125,13 @@ void loop() {
     } 
       
     #endif
-    delay(1000);
+    delay(100);
     
 }
 
 void updateSerial()
 {
   String str;
-  delay(500);
   while (Serial.available()) 
   {
     mySerial.write(Serial.read());//Forward what Serial received to Software Serial Port
@@ -137,12 +139,20 @@ void updateSerial()
   while(mySerial.available()) 
   {
   str = mySerial.readStringUntil('#');
+  Serial.println(str);
     if (str=="TEST")//Forward what Software Serial received to Serial Port
     {
       str = mySerial.readStringUntil('#');      
       UnoConn.println("#STOP#"+str+"#");   
       stop_flag = true;
-    } else {
+      start_flag = false;
+    } else if (str=="START")
+    {
+      UnoConn.println("#START#");   
+      start_flag = true;
+      stop_flag = false;
+    } 
+    else {
       str = "";
     }
   }

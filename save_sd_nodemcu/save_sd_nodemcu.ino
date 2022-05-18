@@ -1,14 +1,17 @@
 #include "FS.h"
 #include "SD.h"
 #include "SPI.h"
+#include "SSD1306Wire.h"
+#include <Wire.h> 
 #include <WiFi.h>
 
 #define RXD2 9
 #define TXD2 10
+SSD1306Wire display(0x3c, SDA, SCL);
 
 // WiFi network config
-const char* networkName = "ssid";
-const char* networkPswd = "password";
+const char* networkName = "HBC";
+const char* networkPswd = "202030304040";
 
 boolean connected = false;
 WiFiClient client;
@@ -20,6 +23,7 @@ File myFile;
 String filepath;
 String fileExt;
 String file_key;
+int height = 0;
 
 
 void listDir(fs::FS &fs, const char * dirname, uint8_t levels){
@@ -87,6 +91,11 @@ void appendFile(fs::FS &fs, const char * path, String message){
 
 void renameFile(fs::FS &fs, const char * path1, const char * path2){
     Serial.printf("Renaming file %s to %s\n", path1, path2);
+    File f = fs.open(path2);
+    if (f){
+      f.close();
+      deleteFile(SD, path2);
+    }
     if (fs.rename(path1, path2)) {
         Serial.println("File renamed");
     } else {
@@ -94,19 +103,40 @@ void renameFile(fs::FS &fs, const char * path1, const char * path2){
     }
 }
 
+void deleteFile(fs::FS &fs, const char * path){
+    Serial.printf("Deleting file: %s\n", path);
+    if(fs.remove(path)){
+        Serial.println("File deleted");
+    } else {
+        Serial.println("Delete failed");
+    }
+}
+
 void connectToWiFi(const char * ssid, const char * pwd) {
   Serial.println("Connecting to WiFi network: " + String(ssid));
+  drawText(0,&height,"Connecting to WiFi network:");
+  drawText(0,&height,String(ssid));
   // delete old config
   WiFi.disconnect(true);
   WiFi.onEvent(WiFiEvent);
   // Initialize connection
   WiFi.begin(ssid, pwd);
+  int count = 0;
   while(WiFi.status()!=WL_CONNECTED) {
+    count++;
     delay(500);
     Serial.print(".");
+    if (count == 30){
+      Serial.println("");
+      Serial.println("Failed to connect to WiFi");
+      Serial.println("Retrying connection...");
+      drawText(0,&height,"Failed to connect to WiFi");
+      drawText(0,&height,"Retrying connection...");
+    }
   }
   Serial.println("");
   Serial.println("WiFi connected");
+  drawText(0,&height,"WiFi connected");
 }
 
 void WiFiEvent(WiFiEvent_t event) {
@@ -127,13 +157,15 @@ void WiFiEvent(WiFiEvent_t event) {
 
 void transmit_data(){
     if (WiFi.status() == WL_CONNECTED){
-        const int httpPort = 1234; // Port number
-        String host = "";   // Host ip or dns name
-        if(client.connect(host,httpPort)){
+        const int httpPort = 8080;
+        String host = "mugasdwear.centralus.cloudapp.azure.com";
+        if(client.connect("mugasdwear.centralus.cloudapp.azure.com",httpPort)){
             client.setNoDelay(true);
             Serial.println("Connected to Server");
+            drawText(0,&height,"Connected to Server");
         } else {
             Serial.println("Not connected");
+            drawText(0,&height,"Not connected to Server!");
         }
         String url = "/send_data/";
         String boundary = "WebKitFormBoundary7MA4YWxkTrZu0gW";
@@ -233,6 +265,10 @@ void transmit_data(){
                 {
                     send_once = false;
                     client.stop();
+                    drawText(0,&height,"Data Successfully Send");
+                }
+                if (line.indexOf("ERROR OCCURRED!!!")>0){
+                    drawText(0,&height,"Failed Send Data!");
                 }
             }
         }
@@ -245,46 +281,75 @@ void transmit_data(){
     delay(10000);
 }
 
+void drawText(int x, int *y,String s) { 
+  display.setFont(ArialMT_Plain_10);
+  display.setTextAlignment(TEXT_ALIGN_LEFT);
+  display.drawString(x, *y, s);
+  display.display();
+  *y+=10;
+  if (*y > 50){
+    *y = 0;
+    delay(200);
+    display.clear();
+  }
+}
+
+
 void setup(){
     Serial.begin(115200);
     Serial2.begin(19200, SERIAL_8N1, RXD2, TXD2);
+    // Initialising the UI will init the display too.
+    display.init();
+    display.flipScreenVertically();
     stop_flag = false;
     send_once = true;
     // SD Card
     Serial.print("Initializing SD card...");
+    drawText(0,&height,"Initializing SD card..."); 
     if(!SD.begin()){
         Serial.println("Card Mount Failed");
+        drawText(0,&height,"SD Card Mount Failed"); 
         return;
     }
+    drawText(0,&height,"SD Card Mounted");
     uint8_t cardType = SD.cardType();
 
     if(cardType == CARD_NONE){
         Serial.println("No SD card attached");
+        drawText(0,&height,"No SD card attached");
         return;
     }
     filepath = "/acc_data";
     fileExt = ".txt";
     Serial.print("SD Card Type: ");
+    drawText(0,&height,"SD Card Type: ");
     if(cardType == CARD_MMC){
         Serial.println("MMC");
+        drawText(0,&height,"MMC");
     } else if(cardType == CARD_SD){
         Serial.println("SDSC");
+        drawText(0,&height,"SDSC");
     } else if(cardType == CARD_SDHC){
         Serial.println("SDHC");
+        drawText(0,&height,"SDHC");
     } else {
         Serial.println("UNKNOWN");
+        drawText(0,&height,"UNKNOWN");
     }
 
     uint64_t cardSize = SD.cardSize() / (1024 * 1024);
     Serial.printf("SD Card Size: %lluMB\n", cardSize);
-
     listDir(SD, "/", 2);
     String s_temp = filepath+fileExt;
     writeFile(SD, s_temp.c_str(), "");
-    Serial.println("Writing to file ...");
+    Serial.println("Waiting for start signal...");
+    drawText(0,&height,"All devices initialized ...");
+    drawText(0,&height,"Waiting for start signal...");
     // WiFi
 //    connectToWiFi(networkName, networkPswd);
     delay(2000);
+    display.clear();
+    height = 0;
     // end WiFi
 }
 
@@ -296,6 +361,10 @@ void loop(){
     Serial.println(str);
     if (str == "STOP")
     {
+        display.clear();
+        height = 0;
+        drawText(0,&height,"Stop Signal Received");
+        drawText(0,&height,"Preparing to Send Data...");
         stop_flag = true;
         file_key = Serial2.readStringUntil('#');
         String temp = s_temp;
@@ -306,18 +375,60 @@ void loop(){
           Serial2.readString();
         }
         break;
-    } else {
-      appendFile(SD, s_temp.c_str(), str);
+    } else if(str == "START"){
+      display.clear();
+        height = 0;
+        drawText(0,&height,"Start Signal Received");
+        drawText(0,&height,"Writing to file...");
+        stop_flag = false;
+        send_once = true;
+        filepath = "/acc_data";
+        fileExt = ".txt";
+        String s_temp = filepath+fileExt;
+        writeFile(SD, s_temp.c_str(), "");
+        Serial.println("Writing to file ...");
+    }
+    else {
+      if (str!="\n"){
+        if(str!="" && str.indexOf('\n')==-1){
+          float val = str.toFloat();
+          String str1 = String(val,2);
+          if (str.indexOf(",")!=-1){
+            str1 += ", ";
+          }
+          appendFile(SD, s_temp.c_str(), str1);
+        }
+      } else{
+        appendFile(SD, s_temp.c_str(), "\n");
+      }
     }
   }
   if (stop_flag && send_once){
     if (connected) {
-      // ToDo
+      drawText(0,&height,"Transmitting data...");
       transmit_data();
     } else {
+        drawText(0, &height, "Connecting to WiFi...");
         connectToWiFi(networkName, networkPswd);
     }
     delay(1000);
   }
-  delay(100);
+  while(Serial2.available()>0 && stop_flag){
+    str = Serial2.readStringUntil('#');
+    Serial.println(str);
+    if(str == "START"){
+      display.clear();
+        height = 0;
+        drawText(0,&height,"Start Signal Received");
+        drawText(0,&height,"Writing to file...");
+        stop_flag = false;
+        send_once = true;
+        filepath = "/acc_data";
+        fileExt = ".txt";
+        String s_temp = filepath+fileExt;
+        writeFile(SD, s_temp.c_str(), "");
+        Serial.println("Writing to file ...");
+    }
+  }
+  delay(50);
 }
