@@ -10,8 +10,8 @@
 SSD1306Wire display(0x3c, SDA, SCL);
 
 // WiFi network config
-const char* networkName = "HBC";
-const char* networkPswd = "202030304040";
+const char* networkName = "ssid";
+const char* networkPswd = "pswd";
 
 boolean connected = false;
 WiFiClient client;
@@ -157,9 +157,9 @@ void WiFiEvent(WiFiEvent_t event) {
 
 void transmit_data(){
     if (WiFi.status() == WL_CONNECTED){
-        const int httpPort = 8080;
-        String host = "mugasdwear.centralus.cloudapp.azure.com";
-        if(client.connect("mugasdwear.centralus.cloudapp.azure.com",httpPort)){
+        const int httpPort = 1234; // Port number
+        String host = "replace with host_name";
+        if(client.connect(host,httpPort)){
             client.setNoDelay(true);
             Serial.println("Connected to Server");
             drawText(0,&height,"Connected to Server");
